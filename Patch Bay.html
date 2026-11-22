@@ -1,0 +1,736 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Patch Bay</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: ticket queue on the left, one live incident workspace on the right; the queue becomes a scrolling strip on phones. */
+:root{
+  --bg:#EDF0F4; --surface:#FFFFFF; --surface-2:#E4E9F0; --ink:#101C2B; --ink-2:#4B5B6E; --line:#CBD3DE;
+  --accent:#0B6E7F; --accent-ink:#FFFFFF;
+  --ok:#1E7A4C; --ok-bg:#E2F3EA; --warn:#8F5200; --warn-bg:#FCEBCF; --bad:#B42318; --bad-bg:#FBE4E1;
+  --code-bg:#0F1B2A; --code-ink:#D6E2F0; --code-dim:#8296AC; --code-key:#7FD1E0; --code-str:#F0C987;
+  --display:'Bricolage Grotesque','Helvetica Neue',Arial,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0A131D; --surface:#111D2B; --surface-2:#192A3C; --ink:#E5EDF6; --ink-2:#95A7BB; --line:#26394E;
+    --accent:#46C6D8; --accent-ink:#05222A;
+    --ok:#58C98F; --ok-bg:#0F2E22; --warn:#F0B14F; --warn-bg:#35280F; --bad:#FF8478; --bad-bg:#3A1714;
+    --code-bg:#060D15; --code-ink:#D6E2F0; --code-dim:#7389A0; --code-key:#7FD1E0; --code-str:#F0C987;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0A131D; --surface:#111D2B; --surface-2:#192A3C; --ink:#E5EDF6; --ink-2:#95A7BB; --line:#26394E;
+  --accent:#46C6D8; --accent-ink:#05222A;
+  --ok:#58C98F; --ok-bg:#0F2E22; --warn:#F0B14F; --warn-bg:#35280F; --bad:#FF8478; --bad-bg:#3A1714;
+  --code-bg:#060D15; --code-ink:#D6E2F0; --code-dim:#7389A0; --code-key:#7FD1E0; --code-str:#F0C987;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;
+  padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto}
+button{font:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+code{font-family:var(--mono);font-size:.9em;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+.top{display:flex;flex-wrap:wrap;gap:16px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+.top h1{font-family:var(--display);font-weight:800;font-size:clamp(32px,6vw,48px);line-height:1;letter-spacing:-.03em;margin:0 0 8px}
+.top p{margin:0;color:var(--ink-2);max-width:48ch}
+.score{display:flex;gap:10px;flex-wrap:wrap}
+.chip{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 14px;min-width:120px}
+.chip b{display:block;font-family:var(--display);font-size:22px;line-height:1.15;font-variant-numeric:tabular-nums}
+.chip span{font:500 11px/1.2 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2)}
+
+.app{display:grid;grid-template-columns:280px minmax(0,1fr);gap:20px;align-items:start}
+.queue{display:flex;flex-direction:column;gap:10px;position:sticky;top:12px;min-width:0}
+.qlist{display:flex;flex-direction:column;gap:8px}
+.ticket{display:grid;grid-template-columns:1fr auto;gap:3px 8px;text-align:left;background:var(--surface);color:var(--ink);
+  border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer}
+.ticket:hover{border-color:var(--accent)}
+.ticket[aria-current="true"]{background:var(--surface-2);border-color:var(--accent)}
+.tid{font:500 12px/1.4 var(--mono);color:var(--ink-2)}
+.tt{grid-column:1/-1;font-weight:600;line-height:1.3}
+.st{grid-column:1/-1;font:500 12px/1.4 var(--mono);color:var(--ink-2)}
+.st.done{color:var(--ok)}
+.sev{font:500 10.5px/1.5 var(--mono);text-transform:uppercase;letter-spacing:.08em;padding:0 7px;border-radius:99px;border:1px solid currentColor;justify-self:end}
+.sev.crit{color:var(--bad)} .sev.high{color:var(--warn)} .sev.med{color:var(--ink-2)}
+.qnote{font-size:12.5px;color:var(--ink-2);margin:4px 2px 0}
+@media(max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .queue{position:static}
+  .qlist{flex-direction:row;overflow-x:auto;padding-bottom:6px}
+  .ticket{min-width:208px}
+}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:clamp(16px,3vw,26px);min-width:0}
+.panel h2{font-family:var(--display);font-weight:800;font-size:clamp(24px,4vw,32px);line-height:1.1;letter-spacing:-.02em;margin:6px 0 10px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tag{font:500 11px/1.5 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);background:var(--surface-2);padding:1px 8px;border-radius:99px}
+.brief{margin:0 0 18px;max-width:68ch}
+.lbl{font:500 11.5px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);margin:16px 0 6px;display:block}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+
+.code{background:var(--code-bg);color:var(--code-ink);font:13px/1.65 var(--mono);padding:14px 16px;border-radius:6px;overflow-x:auto;margin:0;white-space:pre}
+.code .k{color:var(--code-key)} .code .s{color:var(--code-str)} .code .c{color:var(--code-dim)}
+mark.inj{background:var(--warn-bg);color:var(--warn);padding:0 2px;border-radius:3px;font-weight:500}
+
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.sec:hover{border-color:var(--accent)}
+.btn.danger{background:var(--bad);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+.in{font:14px/1.4 var(--mono);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 11px;width:100%;min-width:0}
+.loginform{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:14px}
+.field{flex:1 1 180px;min-width:0}
+.field .lbl{margin:0 0 4px}
+.result{margin:12px 0 0;padding:9px 12px;border-radius:6px;background:var(--surface-2);min-height:42px}
+.result.ok{background:var(--ok-bg);color:var(--ok)} .result.bad{background:var(--bad-bg);color:var(--bad)} .result.warn{background:var(--warn-bg);color:var(--warn)}
+
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;color:var(--ink);cursor:pointer;line-height:1.5}
+.opt:hover:not(:disabled){border-color:var(--accent)}
+.opt:disabled{cursor:default;color:var(--ink)}
+.opt .why{display:block;margin-top:8px;font-size:13.5px;color:var(--ink-2)}
+.opt.right{border-color:var(--ok);background:var(--ok-bg)}
+.opt.wrongopt{border-color:var(--bad);background:var(--bad-bg)}
+
+.meter{position:relative;height:14px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin:6px 0 4px}
+.meter .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--bad);transition:width .25s}
+.meter .fill.mid{background:var(--warn)} .meter .fill.good{background:var(--ok)}
+.meter .goal{position:absolute;top:0;bottom:0;width:2px;background:var(--ink)}
+.scale{display:flex;justify-content:space-between;font:500 11px/1.4 var(--mono);color:var(--ink-2)}
+.notes{margin:8px 0 0;padding-left:18px;color:var(--ink-2);font-size:14px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips button{font:13px var(--mono);background:var(--surface-2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 9px;cursor:pointer}
+.chips button:hover{border-color:var(--accent)}
+.big{font-family:var(--display);font-weight:800;font-size:24px;line-height:1.2}
+
+.mail{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.mhead{background:var(--surface-2);padding:10px 14px;display:flex;flex-direction:column;gap:4px}
+.mrow{display:flex;gap:10px;align-items:baseline;min-width:0}
+.mrow .k{font:500 11px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);flex:0 0 58px}
+.mbody{padding:14px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.mbody p{margin:0}
+.hot{background:transparent;color:var(--ink);border:1px dashed var(--ink-2);border-radius:4px;padding:1px 6px;text-align:left;cursor:pointer;overflow-wrap:anywhere}
+.hot:hover{border-color:var(--accent);background:var(--surface-2)}
+.hot.linkbtn{background:var(--accent);color:var(--accent-ink);border:1px solid var(--accent);padding:8px 16px;border-radius:6px;font-weight:600}
+.hot.flag{border:1px solid var(--bad);background:var(--bad-bg);color:var(--bad)}
+.hot.decoy{border:1px solid var(--line);opacity:.7}
+.finds{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.find{border:1px solid var(--bad);background:var(--bad-bg);border-radius:6px;padding:8px 12px;font-size:14px}
+.find.neutral{border-color:var(--line);background:var(--surface-2)}
+.find b{display:block}
+.find p{margin:2px 0 0;color:var(--ink-2)}
+
+.codebox{display:flex;flex-direction:column;background:var(--code-bg);border-radius:6px;padding:6px;overflow-x:auto}
+.line{display:flex;gap:14px;text-align:left;background:transparent;border:0;border-radius:4px;color:var(--code-ink);padding:2px 10px;cursor:pointer;white-space:pre;font:13px/1.7 var(--mono)}
+.line:hover{background:rgba(127,209,224,.14)}
+.line .n{color:var(--code-dim);width:1.5em;text-align:right;flex:0 0 auto}
+.line.hit{background:rgba(255,132,120,.22)}
+.line.miss{opacity:.55}
+.lineinfo{margin:10px 0 0}
+
+.log{background:var(--code-bg);color:var(--code-ink);border-radius:6px;padding:8px 6px;font:12px/1.7 var(--mono);max-height:300px;overflow:auto}
+.log div{padding:0 8px;white-space:pre;border-radius:3px}
+.log div.hl{background:rgba(240,177,79,.22)}
+.log div.ok{color:#7BE0A8}
+.ip{font:inherit;color:var(--code-str);background:transparent;border:0;border-bottom:1px dotted var(--code-str);padding:0;cursor:pointer}
+.ipstat{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin-top:10px;padding:10px 12px;background:var(--surface-2);border-radius:6px;font-size:14px}
+.ipstat .mono{font-family:var(--mono)}
+
+.pkts{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.pkt{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:10px 12px;border-top:1px solid var(--line)}
+.pkt:first-child{border-top:0}
+.pkt .n{font:500 12px var(--mono);color:var(--ink-2);width:1.4em}
+.pkt .src{font:500 13px var(--mono);flex:1 1 130px}
+.pkt .svc{flex:2 1 160px;font-size:14px}
+.pkt .svc i{color:var(--ink-2);font-style:normal}
+.seg{display:flex}
+.seg button{background:var(--surface);color:var(--ink);border:1px solid var(--line);padding:6px 14px;cursor:pointer}
+.seg button:first-child{border-radius:6px 0 0 6px} .seg button:last-child{border-radius:0 6px 6px 0;border-left:0}
+.seg button[aria-pressed="true"][data-d="allow"]{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.seg button[aria-pressed="true"][data-d="block"]{background:var(--bad-bg);border-color:var(--bad);color:var(--bad)}
+.pkt.ok{background:var(--ok-bg)} .pkt.no{background:var(--bad-bg)}
+.pwhy{flex:1 1 100%;margin:0;padding-left:calc(1.4em + 14px);font-size:13.5px;color:var(--ink-2)}
+.policy{background:var(--surface-2);border-radius:6px;padding:10px 14px;margin:0 0 12px}
+.policy ul{margin:4px 0 0;padding-left:18px}
+
+.bar{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.bar .row{justify-content:space-between}
+.pot{font:500 12px var(--mono);color:var(--ink-2);text-transform:uppercase;letter-spacing:.08em}
+.hints{margin:0;padding-left:20px;color:var(--ink-2);font-size:14px}
+.hints:empty{display:none}
+.say{min-height:40px;padding:9px 12px;border-radius:6px;background:var(--surface-2);color:var(--ink-2);font-size:14.5px}
+.say.bad{background:var(--bad-bg);color:var(--bad)} .say.ok{background:var(--ok-bg);color:var(--ok)}
+
+.debrief{margin-top:22px;border:1px solid var(--ok);background:var(--ok-bg);border-radius:10px;padding:clamp(14px,3vw,22px)}
+.debrief h3{font-family:var(--display);font-weight:800;font-size:22px;margin:0 0 12px;color:var(--ok)}
+.learn{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:16px}
+.learn h4{margin:0 0 4px;font-size:14px}
+.learn p{margin:0;font-size:14px;color:var(--ink)}
+.rep{width:100%;border-collapse:collapse;margin:10px 0 16px}
+.rep th,.rep td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-size:14px}
+.rep th{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2)}
+.rep td.xp{font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Patch Bay</h1>
+      <p>Security analyst training. Work each incident ticket, fix the problem, then read why it worked.</p>
+    </div>
+    <div class="score" aria-live="polite">
+      <div class="chip"><b id="xp">0</b><span>XP earned</span></div>
+      <div class="chip"><b id="rank">Trainee</b><span>Rank</span></div>
+    </div>
+  </header>
+  <div class="app">
+    <nav class="queue" aria-label="Incident queue">
+      <div class="qlist" id="qlist"></div>
+      <p class="qnote">Each ticket pays up to 100 XP. Wrong moves cost 10 and hints cost 20. Progress is saved in this browser.</p>
+    </nav>
+    <main id="main"></main>
+  </div>
+</div>
+
+<script>
+/*PURE*/
+var LEET={'@':'a','4':'a','0':'o','3':'e','$':'s','5':'s','1':'l','!':'i','7':'t'};
+var COMMON=new Set(['password','123456','12345678','123456789','qwerty','letmein','iloveyou','admin','welcome','monkey','dragon','p@ssw0rd','password1','password123','summer2024','abc123','football','sunshine','princess','trustno1','correcthorsebatterystaple','correct horse battery staple','passw0rd','qwerty123','tr0ub4dor&3']);
+var WORDS=['password','summer','winter','spring','autumn','dragon','monkey','football','baseball','welcome','admin','login','master','shadow','sunshine','princess','letmein','qwerty','iloveyou','secret','hello','charlie','jordan','michael','tiger','soccer','banana','cookie','guitar','purple','orange','school','family','london','pepper','ranger','killer','hunter','freedom','whatever','flower','monday','friday','coffee','horse','battery','staple','correct','troubador','troubadour','mustang','starwars','batman','superman','liverpool','arsenal'];
+var GUESSES_PER_SEC=1e10, YEAR_SECONDS=31536000;
+var GOAL_BITS=Math.log2(YEAR_SECONDS*2*GUESSES_PER_SEC);
+
+function evalCond(c,secret){
+  var m;
+  if((m=c.match(/^username\s*=\s*'(.*)'$/i))) return m[1]==='admin';
+  if((m=c.match(/^password\s*=\s*'(.*)'$/i))) return m[1]===secret;
+  if((m=c.match(/^'?([^'=\s]*)'?\s*=\s*'?([^'=\s]*)'?$/))) return m[1]===m[2];
+  return false;
+}
+function evalWhere(where,secret){
+  return where.split(/\s+or\s+/i).some(function(term){
+    return term.split(/\s+and\s+/i).every(function(cond){return evalCond(cond.trim(),secret);});
+  });
+}
+function runQuery(u,p,secret){
+  var where="username = '"+u+"' AND password = '"+p+"'";
+  var cut=where.search(/--|#/);
+  if(cut>=0) where=where.slice(0,cut);
+  where=where.trim();
+  var quotes=(where.match(/'/g)||[]).length;
+  if(quotes%2) return {state:'error'};
+  return {state:evalWhere(where,secret)?'rows':'none'};
+}
+function estimate(pw){
+  if(!pw) return {bits:0,notes:['Type something to see how an attacker would fare.']};
+  var chars=Array.from(pw), low=pw.toLowerCase();
+  var norm=Array.from(low).map(function(ch){return LEET[ch]||ch;}).join('');
+  if(COMMON.has(low)||COMMON.has(norm)) return {bits:0,notes:['This is in the lists attackers try first, or is a trivial variation of one. It falls in well under a second.']};
+  var parts=pw.split(/[\s\-_.]+/).filter(Boolean);
+  if(parts.length>=4 && parts.every(function(p){return /^[a-z]{3,10}$/i.test(p);})){
+    return {bits:parts.length*12.9,notes:['Passphrase of '+parts.length+' words, counted at 12.9 bits per word. That is only fair if the words were picked at random, such as by dice, and not from a quote or lyric you like.']};
+  }
+  var notes=[], cov=new Array(norm.length).fill(false), found=[];
+  WORDS.forEach(function(w){
+    var i=norm.indexOf(w);
+    if(i>=0 && !cov.slice(i,i+w.length).some(Boolean)){for(var k=i;k<i+w.length;k++)cov[k]=true;found.push(w);}
+  });
+  var rem=chars.filter(function(_,i){return !cov[i];});
+  rem=rem.filter(function(c,i){return i===0||c!==rem[i-1];});
+  var pool=(rem.some(function(c){return /[a-z]/.test(c);})?26:0)+(rem.some(function(c){return /[A-Z]/.test(c);})?26:0)+(rem.some(function(c){return /\d/.test(c);})?10:0)+(rem.some(function(c){return /[^A-Za-z0-9]/.test(c);})?33:0);
+  var bits=found.length*14+(rem.length&&pool?rem.length*Math.log2(pool):0);
+  if(/(.)\1\1/.test(low)){bits-=6;notes.push('Repeated characters add almost nothing.');}
+  if(/0123|1234|2345|3456|4567|5678|6789|abcd|bcde|qwer|wert|asdf|zxcv/.test(low)){bits-=10;notes.push('Keyboard and counting runs are guessed early.');}
+  if(found.length) notes.push('Dictionary word'+(found.length>1?'s':'')+' found ('+found.join(', ')+'). Swapping letters for symbols such as @ or 0 barely slows a cracker, because it tries those swaps too.');
+  if(rem.length&&rem.length<=4&&rem.every(function(c){return /\d/.test(c);})) notes.push('Short number tails like a year are among the first things tried.');
+  if(chars.length<12) notes.push('Only '+chars.length+' characters. Every extra character multiplies the guesses needed.');
+  return {bits:Math.max(0,bits),notes:notes};
+}
+function fmtTime(s){
+  if(s<1) return 'under a second';
+  if(s<60) return Math.round(s)+' seconds';
+  if(s<3600) return Math.round(s/60)+' minutes';
+  if(s<86400) return Math.round(s/3600)+' hours';
+  if(s<86400*365) return Math.round(s/86400)+' days';
+  var y=s/YEAR_SECONDS;
+  if(y<1000) return Math.round(y)+' years';
+  if(y<1e6) return Math.round(y/1000)+' thousand years';
+  if(y<1e9) return Math.round(y/1e6)+' million years';
+  return 'billions of years';
+}
+/*ENDPURE*/
+
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s);};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s));};
+var esc=function(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+
+/* ---------- state ---------- */
+var KEY='patchbay-v1', save={done:{}};
+try{var raw=localStorage.getItem(KEY); if(raw){var parsed=JSON.parse(raw); if(parsed&&parsed.done) save=parsed;}}catch(e){}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(save));}catch(e){}}
+var cur=0, run={wrong:0,hints:0,solved:false};
+var main=$('#main');
+function score(){return Math.max(20,100-10*run.wrong-20*run.hints);}
+
+/* ---------- shared helpers ---------- */
+function say(msg,kind){var s=$('#say'); if(!s) return; s.className='say '+(kind||''); s.innerHTML=msg;}
+function pot(){var el=$('#pot'); if(el) el.textContent=run.solved?'Closed':'Worth '+score()+' XP now';}
+var ctx={
+  wrong:function(msg){if(run.solved) return; run.wrong++; say(msg,'bad'); pot();},
+  info:function(msg){say(msg,'');},
+  good:function(msg){say(msg,'ok');},
+  solve:function(){
+    if(run.solved) return;
+    run.solved=true;
+    var sc=score(), id=LEVELS[cur].id;
+    if(!(save.done[id]>=sc)) save.done[id]=sc;
+    persist(); renderQueue(); renderStats(); pot();
+    var hb=$('#hintbtn'); if(hb) hb.disabled=true;
+    showDebrief(sc);
+  }
+};
+function quiz(host,title,opts,done){
+  host.innerHTML='<p class="lbl">'+title+'</p><div class="opts"></div>';
+  var box=$('.opts',host);
+  opts.forEach(function(o){
+    var b=document.createElement('button'); b.type='button'; b.className='opt'; b.innerHTML=o.html;
+    b.addEventListener('click',function(){
+      if(b.disabled) return;
+      b.insertAdjacentHTML('beforeend','<span class="why">'+o.why+'</span>');
+      if(o.ok){
+        $$('.opt',box).forEach(function(x){x.disabled=true;});
+        b.classList.add('right');
+        done();
+      }else{
+        b.disabled=true; b.classList.add('wrongopt');
+        ctx.wrong('Not that one. Read why it fails, then try another.');
+      }
+    });
+    box.appendChild(b);
+  });
+}
+
+/* ---------- Level 1: SQL injection ---------- */
+function mountSqli(ws){
+  var SECRET='kV7!pq2#Lm9x';
+  ws.innerHTML=
+    '<span class="lbl">server/login.js</span>'+
+    '<pre class="code"><span class="c">// builds the query from whatever the user typed</span>\n'+
+    '<span class="k">const</span> sql = <span class="s">"SELECT * FROM users WHERE username = \'"</span> + username\n'+
+    '          + <span class="s">"\' AND password = \'"</span> + password + <span class="s">"\'"</span>;\n'+
+    '<span class="k">const</span> rows = db.query(sql);   <span class="c">// one row back means logged in</span></pre>'+
+    '<form class="loginform" id="lf" autocomplete="off">'+
+      '<div class="field"><label class="lbl" for="u">username</label><input class="in" id="u" value="admin" spellcheck="false" autocapitalize="off"></div>'+
+      '<div class="field"><label class="lbl" for="p">password</label><input class="in" id="p" value="letmein" spellcheck="false" autocapitalize="off"></div>'+
+      '<button class="btn" type="submit">Try login</button>'+
+    '</form>'+
+    '<span class="lbl">What the database receives (your input is highlighted)</span>'+
+    '<pre class="code" id="q"></pre>'+
+    '<p class="result" id="res">Goal: get logged in as <b>admin</b> without knowing the password. Edit the fields and press Try login.</p>'+
+    '<div id="patch"></div>';
+  var u=$('#u'), p=$('#p'), q=$('#q'), res=$('#res'), patched=false;
+  function show(){
+    q.innerHTML="SELECT * FROM users WHERE username = '<mark class=\"inj\">"+esc(u.value)+"</mark>' AND password = '<mark class=\"inj\">"+esc(p.value)+"</mark>'";
+  }
+  u.addEventListener('input',show); p.addEventListener('input',show); show();
+  $('#lf').addEventListener('submit',function(e){
+    e.preventDefault();
+    var r=runQuery(u.value,p.value,SECRET), hasQuote=(u.value+p.value).indexOf("'")>=0;
+    if(r.state==='error'){
+      res.className='result warn';
+      res.innerHTML='<b>Database error:</b> syntax error in the query. Your quote ended a string early and left the query broken. Errors like this mean your input is changing the query itself, which is the first sign of injection. Now make the query valid again.';
+    }else if(r.state==='rows'){
+      res.className='result ok';
+      res.innerHTML='<b>1 row returned.</b> You are logged in as admin.';
+      if(!patched){patched=true; ctx.good('Exploit confirmed. Now patch it: choose the fix that actually closes the hole.'); patchStep();}
+    }else{
+      res.className='result bad';
+      res.innerHTML='<b>0 rows returned.</b> Login denied.'+(hasQuote?' Your input changed the query, but the condition still came out false. Remember that AND is evaluated before OR, and the password check is still in the query.':'');
+    }
+  });
+  function patchStep(){
+    var host=$('#patch');
+    quiz(host,'Patch it: which change fixes the bug?',[
+      {html:'Strip single quotes out of the input: <code>username.replace("\'", "")</code>',ok:false,
+       why:'Blocklists leak. Attackers use other encodings, inputs with no quotes at all (numeric fields), or characters you forgot. You would be playing whack-a-mole.'},
+      {html:'Send the SQL and the values separately: <code>db.query("SELECT * FROM users WHERE username = ? AND password_hash = ?", [username, hash(password)])</code>',ok:true,
+       why:'Parameterized queries keep input out of the SQL text, so it can only ever be a value, never part of the command. The password is also compared as a hash.'},
+      {html:'Turn off detailed database error messages',ok:false,
+       why:'Hiding errors makes the bug harder to see, not gone. The query still treats your input as code.'},
+      {html:'Limit the username field to 20 characters',ok:false,
+       why:'The payload <code>\' OR 1=1--</code> is only 10 characters. Length limits do not change how the query is built.'}
+    ],function(){ctx.solve();});
+    host.scrollIntoView({block:'nearest'});
+  }
+}
+
+/* ---------- Level 2: password strength ---------- */
+function mountPassword(ws){
+  ws.innerHTML=
+    '<p>The attacker holds a stolen file of password hashes and tests <b>10 billion guesses per second</b> offline. Choose a replacement password that survives at least <b>one year</b> of that. Use made-up passwords only; nothing typed here leaves your browser.</p>'+
+    '<label class="lbl" for="pw">Candidate password</label>'+
+    '<div class="row"><div class="field" style="flex:1 1 260px"><input class="in" id="pw" type="text" value="Summer2024!" spellcheck="false" autocomplete="off" autocapitalize="off"></div><button class="btn" id="sub" type="button">Submit password</button></div>'+
+    '<div class="meter" role="img" aria-label="Strength meter"><div class="fill" id="fill"></div><div class="goal" id="goal"></div></div>'+
+    '<div class="scale"><span>0 bits</span><span id="goaltxt"></span><span>90 bits</span></div>'+
+    '<p class="big" id="ctime" style="margin:14px 0 0"></p>'+
+    '<ul class="notes" id="notes"></ul>'+
+    '<span class="lbl">Try a few</span>'+
+    '<div class="chips" id="chips"></div>';
+  var pw=$('#pw'), MAX=90;
+  $('#goal').style.left=(GOAL_BITS/MAX*100)+'%';
+  $('#goaltxt').textContent='goal: 1 year';
+  ['P@ssw0rd','Summer2024!','correct horse battery staple','Tr0ub4dor&3','kQ8#vN2$'].forEach(function(s){
+    var b=document.createElement('button'); b.type='button'; b.textContent=s;
+    b.addEventListener('click',function(){pw.value=s; upd();}); $('#chips').appendChild(b);
+  });
+  function upd(){
+    var r=estimate(pw.value), secs=Math.pow(2,r.bits)/2/GUESSES_PER_SEC;
+    var fill=$('#fill'); fill.style.width=Math.min(100,r.bits/MAX*100)+'%';
+    fill.className='fill'+(r.bits>=GOAL_BITS?' good':r.bits>=GOAL_BITS*0.6?' mid':'');
+    $('#ctime').innerHTML='Cracked in about '+fmtTime(secs);
+    $('#notes').innerHTML=r.notes.map(function(n){return '<li>'+esc(n)+'</li>';}).join('');
+  }
+  pw.addEventListener('input',upd); upd();
+  $('#sub').addEventListener('click',function(){
+    var r=estimate(pw.value);
+    if(r.bits>=GOAL_BITS){ctx.good('Accepted. That password would hold for over a year against this attacker.'); ctx.solve();}
+    else ctx.wrong('Rejected: it would fall in about '+fmtTime(Math.pow(2,r.bits)/2/GUESSES_PER_SEC)+'. Use the notes under the meter, then submit again.');
+  });
+}
+
+/* ---------- Level 3: phishing ---------- */
+function mountPhish(ws){
+  var FL={
+    from:{bad:1,name:'Sender domain',why:'The display name says Northwind Bank, but the real address ends in <code>account-verify.co</code>. Display names are free text. The part after the @ is what counts.'},
+    subj:{bad:1,name:'Pressure and urgency',why:'A 24-hour threat pushes you to act before you think. Real banks rarely threaten account closure by email.'},
+    greet:{bad:1,name:'Generic greeting',why:'"Dear valued customer" suggests a mass mailing. Your bank knows your name.'},
+    link:{bad:1,name:'Link target',why:'The button actually goes to <code>http://northwindbank.com.login-check.xyz/verify</code>. Read a web address right to left up to the first single slash: the owner is <code>login-check.xyz</code>. The "northwindbank.com" part is just a label the attacker chose. It also uses http, not https.'},
+    att:{bad:1,name:'Disguised attachment',why:'A file named <code>.pdf.exe</code> is a program wearing a PDF costume. Real statements are never executables.'},
+    date:{bad:0,why:'An ordinary timestamp. Attackers can send at any hour, so this is not evidence either way.'},
+    foot:{bad:0,why:'A street address and copyright line are trivial to copy from the real bank. They prove nothing either way.'}
+  };
+  function hot(id,html,cls){return '<button type="button" class="hot '+(cls||'')+'" data-id="'+id+'">'+html+'</button>';}
+  ws.innerHTML=
+    '<p class="lbl" id="count">Red flags found: 0 of 5</p>'+
+    '<div class="mail">'+
+      '<div class="mhead">'+
+        '<div class="mrow"><span class="k">From</span>'+hot('from','Northwind Bank Security Team &lt;security@northwind-bank.account-verify.co&gt;')+'</div>'+
+        '<div class="mrow"><span class="k">Date</span>'+hot('date','Sat 21 Nov 2026, 09:14')+'</div>'+
+        '<div class="mrow"><span class="k">Subject</span>'+hot('subj','URGENT: Your account will be suspended in 24 hours')+'</div>'+
+      '</div>'+
+      '<div class="mbody">'+
+        '<p>'+hot('greet','Dear valued customer,')+'</p>'+
+        '<p>We detected unusual sign-in activity on your account. To keep your funds safe, confirm your details now.</p>'+
+        hot('link','Verify my account now','linkbtn')+
+        '<p>Statement attached: '+hot('att','statement_nov.pdf.exe')+'</p>'+
+        '<p>'+hot('foot','&copy; 2026 Northwind Bank &middot; 100 Harbor Street')+'</p>'+
+      '</div>'+
+    '</div>'+
+    '<div class="finds" id="finds"></div><div id="step2"></div>';
+  var found={}, seen={}, n=0;
+  $$('.hot',ws).forEach(function(b){
+    b.addEventListener('click',function(){
+      var id=b.dataset.id, f=FL[id];
+      if(f.bad){
+        if(found[id]) return;
+        found[id]=1; n++; b.classList.add('flag');
+        $('#finds').insertAdjacentHTML('beforeend','<div class="find"><b>'+f.name+'</b><p>'+f.why+'</p></div>');
+        $('#count').textContent='Red flags found: '+n+' of 5';
+        ctx.good('Good catch. '+(5-n)+' to go.');
+        if(n===5){
+          ctx.good('All five red flags found. Last decision: what do you do with this email?');
+          quiz($('#step2'),'What do you do with it?',[
+            {html:'Click the link to see whether the page looks real',ok:false,why:'Fake pages are pixel-perfect copies, and merely visiting can confirm your address is live or trigger a download. Inspect, do not visit.'},
+            {html:'Reply and ask the sender to confirm it is genuine',ok:false,why:'The reply goes to the attacker. You have confirmed your address is monitored and given them a conversation to work with.'},
+            {html:'Report it as phishing through your security team or mail client, then delete it',ok:true,why:'Reporting lets the security team block the sender and warn others while the campaign is still running.'},
+            {html:'Forward it to coworkers as a warning',ok:false,why:'Forwarding hands a live malicious link to more people. Report it to security instead, who can handle it safely.'}
+          ],function(){ctx.solve();});
+        }
+      }else{
+        if(seen[id]) return;
+        seen[id]=1; b.classList.add('decoy');
+        $('#finds').insertAdjacentHTML('beforeend','<div class="find neutral"><b>Not evidence</b><p>'+f.why+'</p></div>');
+        ctx.wrong('That part is ordinary. Flagging innocent details wastes the security team\'s time.');
+      }
+    });
+  });
+}
+
+/* ---------- Level 4: XSS code review ---------- */
+function mountXss(ws){
+  var LINES=[
+    ["app.get('/comments', (req, res) => {","The route declaration. Nothing user-controlled here."],
+    ["  const rows = db.all('SELECT author, body FROM comments');","The SQL is fixed, so there is no injection here. But the stored comments came from visitors, so treat what comes back as untrusted. Where is it written into the page?"],
+    ["  let html = '<h1>Guestbook</h1>';","A static string."],
+    ["  for (const r of rows) {","Just a loop over the rows."],
+    ["  html += '<p><b>' + r.author + '</b>: ' + r.body + '</p>';",null],
+    ["  }","A closing brace."],
+    ["  res.send(html);","This sends whatever was built. The damage was done earlier, where untrusted text was glued into markup."],
+    ["});","A closing brace."]
+  ];
+  ws.innerHTML=
+    '<span class="lbl">server/comments.js: click the line that creates the hole</span>'+
+    '<div class="codebox" id="cb">'+LINES.map(function(l,i){return '<button type="button" class="line" data-i="'+i+'"><span class="n">'+(i+1)+'</span><span>'+esc(l[0])+'</span></button>';}).join('')+'</div>'+
+    '<p class="result lineinfo" id="li">Visitors post comments, and this page shows them to everyone. Review the handler.</p>'+
+    '<div id="demo"></div><div id="fix"></div>';
+  var done=false;
+  $$('.line',ws).forEach(function(b){
+    b.addEventListener('click',function(){
+      if(done) return;
+      var i=+b.dataset.i, info=LINES[i][1], li=$('#li');
+      if(info){
+        b.classList.add('miss'); li.className='result lineinfo bad'; li.innerHTML='<b>Line '+(i+1)+':</b> '+info;
+        ctx.wrong('Not that line.');
+      }else{
+        done=true; b.classList.add('hit'); li.className='result lineinfo ok';
+        li.innerHTML='<b>Line 5.</b> The comment body and author are concatenated straight into HTML. Whatever a visitor types becomes page markup.';
+        $('#demo').innerHTML=
+          '<span class="lbl">What an attacker posts as a comment</span>'+
+          '<pre class="code">'+esc('<img src=x onerror="alert(\'xss\')">')+'</pre>'+
+          '<span class="lbl">The HTML your server then sends to every visitor</span>'+
+          '<pre class="code">'+esc('<p><b>mia</b>: <img src=x onerror="alert(\'xss\')"></p>')+'</pre>'+
+          '<p>The browser does not see a comment. It sees an image that fails to load, then runs the code in <code>onerror</code> as part of your site. There is no script tag anywhere. Instead of a popup, that code could read the page, act as the logged-in visitor, or rewrite what they see.</p>';
+        quiz($('#fix'),'Patch it: which change fixes the bug?',[
+          {html:'Remove the text <code>&lt;script&gt;</code> from comments before saving them',ok:false,why:'This attack has no script tag. Event handlers, other tags and case tricks all walk around a blocklist.'},
+          {html:'Add JavaScript validation to the comment form in the browser',ok:false,why:'Attackers skip your form and send requests straight to the server. Client-side checks help usability, not security.'},
+          {html:'Escape the values as they are written into HTML: <code>escapeHtml(r.author)</code> and <code>escapeHtml(r.body)</code>',ok:true,why:'Output encoding turns <code>&lt;</code> into <code>&amp;lt;</code>, so the browser shows the text instead of running it. Do it at the point of output, for the context the text lands in.'},
+          {html:'Ask visitors to disable JavaScript',ok:false,why:'You cannot control visitors, and it would break the site. The fix belongs on the server.'}
+        ],function(){ctx.solve();});
+      }
+    });
+  });
+}
+
+/* ---------- Level 5: log triage ---------- */
+function mountLogs(ws){
+  var ATT='203.0.113.45', OFF='198.51.100.23', SCAN='192.0.2.88', OTH='198.51.100.150';
+  var ev=[], pad=function(n){return String(n).padStart(2,'0');};
+  var hms=function(s){return pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60);};
+  var T=function(h,m,s){return h*3600+m*60+s;};
+  var add=function(t,ip,user,ok,inv){ev.push({t:t,ip:ip,user:user,ok:ok,inv:!!inv});};
+  [['mia',8,2],['raj',9,41],['mia',11,15],['lee',13,30],['raj',14,7],['lee',15,52]].forEach(function(a){add(T(a[1],a[2],0),OFF,a[0],false); add(T(a[1],a[2],18),OFF,a[0],true);});
+  for(var i=0;i<6;i++) add(T(1,0,7)+i*61,SCAN,'root',false);
+  add(T(6,0,3),OTH,'deploy',true); add(T(18,0,11),OTH,'deploy',true);
+  var users=['root','admin','oracle','ubuntu','pi','postgres','guest','user','deploy','ftp','git','support','test','test'];
+  var invalid={oracle:1,ubuntu:1,pi:1,postgres:1,guest:1,user:1,ftp:1,git:1,support:1};
+  users.forEach(function(u,k){add(T(3,14,0)+k*3,ATT,u,false,invalid[u]);});
+  add(T(3,14,0)+users.length*3+4,ATT,'test',true);
+  ev.sort(function(a,b){return a.t-b.t;});
+  var lines=ev.map(function(e,k){
+    var pid=2100+(k*37)%900, port=40000+(k*7919)%20000;
+    var msg=e.ok?'Accepted password for '+e.user:'Failed password for '+(e.inv?'invalid user ':'')+e.user;
+    return '<div data-ip="'+e.ip+'" class="'+(e.ok?'ok':'')+'">Nov 21 '+hms(e.t)+' srv01 sshd['+pid+']: '+msg+' from <button type="button" class="ip" data-ip="'+e.ip+'">'+e.ip+'</button> port '+port+' ssh2</div>';
+  });
+  ws.innerHTML=
+    '<span class="lbl">/var/log/auth.log (overnight and daytime). Tap an IP address to inspect it.</span>'+
+    '<div class="log" id="log" tabindex="0">'+lines.join('')+'</div>'+
+    '<div id="stat"></div><div id="s2"></div>';
+  $$('.ip',ws).forEach(function(b){b.addEventListener('click',function(){inspect(b.dataset.ip);});});
+  function inspect(ip){
+    var mine=ev.filter(function(e){return e.ip===ip;}), fails=mine.filter(function(e){return !e.ok;}), oks=mine.length-fails.length;
+    var names={}; fails.forEach(function(e){names[e.user]=1;});
+    var span=mine[mine.length-1].t-mine[0].t;
+    $$('#log div').forEach(function(d){d.classList.toggle('hl',d.dataset.ip===ip);});
+    var first=$('#log div.hl'); if(first) first.scrollIntoView({block:'nearest'});
+    $('#stat').innerHTML='<div class="ipstat"><span class="mono"><b>'+ip+'</b></span><span>'+fails.length+' failed</span><span>'+oks+' accepted</span><span>'+Object.keys(names).length+' usernames tried</span><span>'+hms(mine[0].t)+' to '+hms(mine[mine.length-1].t)+(span<120?' ('+span+' s)':'')+'</span><button type="button" class="btn danger" id="blk">Block '+ip+'</button></div>';
+    $('#blk').addEventListener('click',function(){block(ip);});
+  }
+  var WHYNOT={};
+  WHYNOT[OFF]='Those failures are spread across a workday and each one is followed by a success for the same person. That is people mistyping passwords. Blocking the office would lock your own staff out.';
+  WHYNOT[SCAN]='Six slow attempts on root look like background internet scanning. Worth rate-limiting, but it is not the burst that matters here.';
+  WHYNOT[OTH]='Two successful logins for deploy at 06:00 and 18:00 look like routine automation, with no failures at all.';
+  var blocked=false;
+  function block(ip){
+    if(blocked) return;
+    if(ip!==ATT){ctx.wrong(WHYNOT[ip]); return;}
+    blocked=true; $('#blk').disabled=true;
+    ctx.good('Blocked '+ATT+': 14 failures in under a minute across 13 usernames. But the log does not end with failures. Read on.');
+    quiz($('#s2'),'Did the attack succeed? Which account was compromised?',[
+      {html:'<code>root</code>',ok:false,why:'root was tried but only ever failed. There is no Accepted line for it.'},
+      {html:'<code>test</code>',ok:true,why:'There is an Accepted password line for test from the attacker, right after the burst of failures. A weak password on a forgotten account is a classic way in.'},
+      {html:'<code>deploy</code>',ok:false,why:'deploy was tried by the attacker and failed. The successful deploy logins come from a different, routine address.'},
+      {html:'<code>admin</code>',ok:false,why:'admin was tried and failed. No Accepted line for it from the attacker.'}
+    ],function(){
+      quiz($('#s2'),'The attacker is in as test. What do you do next?',[
+        {html:'The IP is blocked. Close the ticket.',ok:false,why:'The attacker already holds a working login and can come back from another address. Blocking one IP is only containment of one door.'},
+        {html:'Disable the test account, review what it ran (shell history, new keys, scheduled jobs), rotate any secrets it could reach, then move SSH to key-only login with rate limiting',ok:true,why:'That order works: contain the account, investigate what the attacker did, rotate secrets, then harden so password guessing stops working at all.'},
+        {html:'Delete the log file so the noise goes away',ok:false,why:'The log is your evidence. Deleting it hides the breach from you and from anyone investigating later.'},
+        {html:'Reboot the server',ok:false,why:'A reboot can erase volatile evidence and does not revoke the attacker\'s access.'}
+      ],function(){ctx.solve();});
+    });
+  }
+}
+
+/* ---------- Level 6: firewall ---------- */
+function mountFirewall(ws){
+  var P=[
+    {src:'203.0.113.9',proto:'TCP',port:443,name:'HTTPS',allow:true,why:'Public web traffic. The web rule allows 443 from anywhere.'},
+    {src:'198.51.100.77',proto:'TCP',port:22,name:'SSH',allow:false,why:'SSH from the open internet. Only the admin network 10.0.9.0/24 may reach SSH.'},
+    {src:'10.0.9.14',proto:'TCP',port:22,name:'SSH',allow:true,why:'10.0.9.14 is inside the admin network 10.0.9.0/24, which is explicitly allowed.'},
+    {src:'192.0.2.50',proto:'TCP',port:3389,name:'Remote Desktop',allow:false,why:'No rule allows it, so default deny applies. It is also a favorite attacker target.'},
+    {src:'203.0.113.80',proto:'TCP',port:80,name:'HTTP',allow:true,why:'Public web traffic. The web rule allows 80 from anywhere.'},
+    {src:'192.0.2.61',proto:'TCP',port:3306,name:'MySQL database',allow:false,why:'A database port reachable from the internet. No rule allows it, so default deny applies.'},
+    {src:'10.0.7.5',proto:'TCP',port:22,name:'SSH',allow:false,why:'An internal address, but not in the admin network 10.0.9.0/24. Being inside is not enough.'},
+    {src:'198.51.100.12',proto:'UDP',port:53,name:'DNS',allow:false,why:'This server does not offer DNS. No rule allows it, so default deny applies.'}
+  ];
+  var pick={};
+  ws.innerHTML=
+    '<div class="policy"><b>Policy for 10.0.5.20 (public website)</b><ul>'+
+      '<li>Allow web traffic (TCP 80 and 443) from anywhere.</li>'+
+      '<li>Allow SSH (TCP 22) only from the admin network <code>10.0.9.0/24</code>, which covers 10.0.9.0 to 10.0.9.255.</li>'+
+      '<li>Everything else: deny.</li></ul></div>'+
+    '<span class="lbl">Incoming packets: decide each one</span>'+
+    '<div class="pkts" id="pk">'+P.map(function(p,i){
+      return '<div class="pkt" data-i="'+i+'"><span class="n">'+(i+1)+'</span><span class="src">'+p.src+'</span><span class="svc">'+p.proto+' '+p.port+' <i>'+p.name+'</i></span>'+
+        '<span class="seg" role="group" aria-label="Decision for packet '+(i+1)+'"><button type="button" data-d="allow" aria-pressed="false">Allow</button><button type="button" data-d="block" aria-pressed="false">Block</button></span>'+
+        '<p class="pwhy" hidden></p></div>';
+    }).join('')+'</div>'+
+    '<div class="row" style="margin-top:14px"><button class="btn" id="apply" type="button">Apply ruleset</button></div>';
+  $$('.pkt',ws).forEach(function(row){
+    var i=+row.dataset.i;
+    $$('.seg button',row).forEach(function(b){
+      b.addEventListener('click',function(){
+        pick[i]=b.dataset.d;
+        $$('.seg button',row).forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});
+        row.classList.remove('ok','no'); $('.pwhy',row).hidden=true;
+      });
+    });
+  });
+  $('#apply').addEventListener('click',function(){
+    if(Object.keys(pick).length<P.length){ctx.info('Decide all '+P.length+' packets before applying the ruleset.'); return;}
+    var bad=0;
+    $$('.pkt',ws).forEach(function(row){
+      var i=+row.dataset.i, want=P[i].allow?'allow':'block', w=$('.pwhy',row);
+      var ok=pick[i]===want;
+      row.classList.toggle('ok',ok); row.classList.toggle('no',!ok);
+      w.hidden=ok; if(!ok){bad++; w.textContent=P[i].why;}
+    });
+    if(bad===0){ctx.good('Every packet handled correctly.'); ctx.solve();}
+    else ctx.wrong(bad+' packet'+(bad>1?'s were':' was')+' handled wrongly. The red rows say what the policy requires.');
+  });
+}
+
+/* ---------- ticket definitions ---------- */
+var LEVELS=[
+  {id:'INC-1041',sev:'crit',title:'Anyone can log in as admin',tags:['SQL injection','Parameterized queries'],
+   brief:'A user reports being logged in as admin without knowing the password. You have the login code. Reproduce the bug, then patch it.',
+   hints:['Single quotes end strings. What happens when your input contains one?','Close the username string, then add a condition that is always true: try <code>admin\' OR \'1\'=\'1</code> and read the highlighted query.','If the password check still blocks you, cut the rest of the query off with a comment. Try the username <code>admin\'--</code>.'],
+   mount:mountSqli,
+   learn:[['Why it worked','The app glued your text into the SQL string, so the database could not tell your data from the program\'s instructions. A quote ended the string and everything after it ran as SQL.'],
+          ['The fix','Parameterized queries send the SQL and the values separately, so input can only ever be a value. Most ORMs do this by default; hand-built strings are where the bug returns.'],
+          ['Also do','Give the app\'s database account only the privileges it needs, and store password hashes, never plain passwords. Injection has been on OWASP\'s Top 10 list for years.']]},
+  {id:'INC-1042',sev:'high',title:'Stolen password hashes',tags:['Password strength','Offline cracking'],
+   brief:'The staff portal\'s password hashes were stolen and are being cracked offline. Pick a replacement for the shared service account.',
+   hints:['Length beats cleverness. Crackers try words, names and years first.','Four or more unrelated words joined by dashes score very well if the words are random.','Try something like <code>maple-harbor-quiet-lamp-orbit</code>, or a random string of 14 or more characters.'],
+   mount:mountPassword,
+   learn:[['Length is the lever','Each extra random character multiplies the guesses needed. A long random passphrase beats a short, symbol-heavy password, and is easier to remember.'],
+          ['Patterns are public','Crackers try dictionary words, names, keyboard runs and years with common swaps like @ for a before they brute-force. A capital letter first and 1! last is a predictable shape.'],
+          ['Beyond strength','Use a different password per site and turn on multi-factor authentication. On the server, slow hashing such as bcrypt, scrypt or Argon2 cuts the attacker\'s guess rate sharply.']]},
+  {id:'INC-1043',sev:'med',title:'Staff report a suspicious email',tags:['Phishing','Email forensics'],
+   brief:'Several staff received the email below. Tap anything that looks like evidence. Careful: not every detail that looks official or unusual is evidence.',
+   hints:['Start with the sender: read the address after the @, not the display name.','A link\'s true destination matters more than its label. Read the domain right to left up to the first single slash.','There are five red flags: the sender domain, the urgency, the generic greeting, the link target and the attachment name.'],
+   mount:mountPhish,
+   learn:[['Read the real address','Display names and link text are free text. The domain that counts sits right before the first single slash, read from right to left.'],
+          ['Pressure is a tell','Urgency, threats and rewards exist to rush you past the checks you just did.'],
+          ['What to do','Do not click or reply. Report through your organization\'s channel and delete. If you already clicked, say so right away: speed of reporting matters more than embarrassment.']]},
+  {id:'INC-1044',sev:'high',title:'Guestbook runs strangers\' code',tags:['Cross-site scripting','Output encoding'],
+   brief:'Reviewers say the guestbook page shows odd popups. Review the handler and find the line that creates the hole.',
+   hints:['Look for the line where data from the database is turned into HTML.','Find where untrusted strings are concatenated into markup that goes to every visitor.','Line 5 is the one.'],
+   mount:mountXss,
+   learn:[['Why it worked','Text from visitors was placed into HTML unchanged, so the browser treated it as part of the page. This is stored cross-site scripting: the attack is saved and served to everyone.'],
+          ['The fix','Encode output for the context it lands in. Most template engines escape by default; use them, and when writing by hand prefer <code>textContent</code> over <code>innerHTML</code>.'],
+          ['Extra layers','A Content Security Policy limits what injected code can do, and HttpOnly cookies keep session cookies away from page scripts. They back up the fix and never replace it.']]},
+  {id:'INC-1045',sev:'high',title:'Who is hammering the server?',tags:['Log analysis','Brute force'],
+   brief:'The SSH log is below. Inspect the addresses, find the source that matters and contain it. Then check whether it got in.',
+   hints:['Attackers try many accounts quickly. Look for a burst of failures within seconds, not hours.','Tap an IP to see failed count, usernames tried and the time span.','The office address has the most logins overall, but they are spread over a day and each is followed by a success. Compare it with the 203.0.113.x address.'],
+   mount:mountLogs,
+   learn:[['Patterns, not counts','The office had more total logins. The attacker stood out by speed and by how many different usernames it tried. Rate and variety separate an attack from forgetful people.'],
+          ['Failures are half the story','After a burst of failures, always look for a success. That one line is the breach.'],
+          ['Respond in order','Contain (disable the account, block the source), investigate what the account did, rotate secrets, then harden with key-based SSH, multi-factor authentication and rate limiting such as fail2ban.']]},
+  {id:'INC-1046',sev:'med',title:'Write the firewall rules',tags:['Firewalls','Least privilege'],
+   brief:'The new web server 10.0.5.20 has no rules yet. Apply the policy to each incoming packet and see which ones get through.',
+   hints:['Default deny: if no rule allows a packet, block it.','SSH is allowed only from 10.0.9.0/24. Check each SSH source address against that range.','Internal addresses outside 10.0.9.0/24 are not trusted for SSH. Web ports 80 and 443 are allowed from anywhere, and nothing else is.'],
+   mount:mountFirewall,
+   learn:[['Default deny','Write rules for what is allowed and drop the rest. A forgotten service then stays closed instead of silently open.'],
+          ['Least privilege','Open only the ports a service needs, to only the networks that need them. SSH open to the world is what produced the log in the last ticket.'],
+          ['Inside is not trusted','10.0.7.5 is an internal address and still gets blocked. Where a packet comes from is not proof of who sent it or whether it should be there.']]}
+];
+var SEV={crit:'Critical',high:'High',med:'Medium'};
+
+/* ---------- rendering ---------- */
+function totalXp(){return LEVELS.reduce(function(a,L){return a+(save.done[L.id]||0);},0);}
+function rankFor(x){var f=x/(LEVELS.length*100); return f>=0.9?'Incident lead':f>=0.7?'Senior analyst':f>=0.4?'Analyst':'Trainee';}
+function renderStats(){var x=totalXp(); $('#xp').textContent=x+' / '+LEVELS.length*100; $('#rank').textContent=rankFor(x);}
+function renderQueue(){
+  var q=$('#qlist');
+  q.innerHTML=LEVELS.map(function(L,i){
+    var d=save.done[L.id];
+    return '<button type="button" class="ticket" data-i="'+i+'" aria-current="'+(i===cur)+'"><span class="tid">'+L.id+'</span><span class="sev '+L.sev+'">'+SEV[L.sev]+'</span><span class="tt">'+L.title+'</span><span class="st '+(d?'done':'')+'">'+(d?'Closed · '+d+' XP':'Open')+'</span></button>';
+  }).join('')+'<button type="button" class="ticket" data-i="-1" aria-current="'+(cur===-1)+'"><span class="tt">Shift report</span><span class="st">Scores and rank</span></button>';
+  $$('.ticket',q).forEach(function(b){b.addEventListener('click',function(){var i=+b.dataset.i; if(i===-1) showReport(true); else openLevel(i,true);});});
+}
+function openLevel(i,user){
+  cur=i; run={wrong:0,hints:0,solved:false};
+  var L=LEVELS[i];
+  main.innerHTML=
+    '<article class="panel"><div class="meta"><span class="tid" style="font:500 12px var(--mono);color:var(--ink-2)">'+L.id+'</span><span class="sev '+L.sev+'" style="justify-self:auto">'+SEV[L.sev]+'</span>'+L.tags.map(function(t){return '<span class="tag">'+t+'</span>';}).join('')+'</div>'+
+    '<h2>'+L.title+'</h2><p class="brief">'+L.brief+'</p>'+
+    '<div id="ws"></div>'+
+    '<div class="bar"><div class="row"><button class="btn sec" id="hintbtn" type="button">Hint (&minus;20 XP)</button><span class="pot" id="pot"></span></div>'+
+    '<ol class="hints" id="hints"></ol><div class="say" id="say" role="status" aria-live="polite">Read the brief, then work the ticket.</div></div>'+
+    '<div id="debrief" class="debrief" hidden></div></article>';
+  $('#hintbtn').addEventListener('click',function(){
+    if(run.hints>=L.hints.length||run.solved) return;
+    $('#hints').insertAdjacentHTML('beforeend','<li>'+L.hints[run.hints++]+'</li>');
+    if(run.hints>=L.hints.length) this.disabled=true;
+    pot();
+  });
+  L.mount($('#ws'));
+  pot(); renderQueue(); renderStats();
+  if(user) main.scrollIntoView({block:'start'});
+}
+function showDebrief(sc){
+  var L=LEVELS[cur], d=$('#debrief'), last=cur===LEVELS.length-1;
+  d.hidden=false;
+  d.innerHTML='<h3>Ticket closed · '+sc+' XP</h3><div class="learn">'+L.learn.map(function(x){return '<div><h4>'+x[0]+'</h4><p>'+x[1]+'</p></div>';}).join('')+'</div>'+
+    '<div class="row"><button class="btn" id="next" type="button">'+(last?'See shift report':'Next ticket')+'</button><button class="btn sec" id="again" type="button">Replay for a better score</button></div>';
+  $('#next').addEventListener('click',function(){if(last) showReport(true); else openLevel(cur+1,true);});
+  $('#again').addEventListener('click',function(){openLevel(cur,true);});
+  d.scrollIntoView({block:'nearest'});
+}
+function showReport(user){
+  cur=-1; var x=totalXp(), closed=LEVELS.filter(function(L){return save.done[L.id];}).length;
+  main.innerHTML=
+    '<article class="panel"><span class="lbl" style="margin-top:0">Shift report</span><h2>'+rankFor(x)+'</h2>'+
+    '<p class="brief">'+closed+' of '+LEVELS.length+' tickets closed, '+x+' of '+LEVELS.length*100+' XP earned.'+(closed<LEVELS.length?' Open tickets are waiting in the queue.':' Replay any ticket to raise its score.')+'</p>'+
+    '<div class="scroll"><table class="rep"><thead><tr><th>Ticket</th><th>Skill practiced</th><th>XP</th></tr></thead><tbody>'+
+    LEVELS.map(function(L){return '<tr><td>'+L.id+' '+L.title+'</td><td>'+L.tags.join(', ')+'</td><td class="xp">'+(save.done[L.id]?save.done[L.id]+' / 100':'open')+'</td></tr>';}).join('')+
+    '</tbody></table></div>'+
+    '<div class="row"><button class="btn sec" id="reset" type="button">Reset progress</button></div></article>';
+  var rb=$('#reset'), armed=false, t;
+  rb.addEventListener('click',function(){
+    if(!armed){armed=true; rb.textContent='Click again to erase all scores'; t=setTimeout(function(){armed=false; rb.textContent='Reset progress';},4000); return;}
+    clearTimeout(t); save={done:{}}; persist(); renderStats(); openLevel(0,true);
+  });
+  renderQueue(); renderStats();
+  if(user) main.scrollIntoView({block:'start'});
+}
+
+var first=0; for(var i=0;i<LEVELS.length;i++){if(!save.done[LEVELS[i].id]){first=i;break;}}
+openLevel(first,false);
+})();
+</script>
+
+</body></html>
